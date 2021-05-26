@@ -1,175 +1,31 @@
-#%% MAIN 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import scipy.integrate
+import scipy.integrate as spi
 from scipy import interpolate
 
-# Then we start running our model.
-# First we require the domain discretization
-# Domain
-nIN = 101 #1 meter depth
-zIN = np.linspace(-1.0 , 0, num=nIN).reshape(nIN, 1) #Internodes
-# nIN = np.shape(zIN)[0]
-zN = np.zeros(nIN - 1).reshape(nIN - 1, 1) #Nodes
-zN[0, 0] = zIN[0, 0] #both nodes and internodes start at -1
-zN[1:nIN - 2, 0] = (zIN[1:nIN - 2, 0] + zIN[2:nIN - 1, 0]) / 2
-zN[nIN - 2, 0] = zIN[nIN - 1] #both nodes and internodes end at 0
-nN = np.shape(zN)[0] #number of nodes (10)
-
-ii = np.arange(0, nN - 1) # [0 1 2 3 4 5 6 7 8]
-dzN = (zN[ii + 1, 0] - zN[ii, 0]).reshape(nN - 1, 1) # [0.25 0.1 0.1 0.1 0.1 0.1 0.1 0.15]
-dzIN = (zIN[1:, 0] - zIN[0:-1, 0]).reshape(nIN - 1, 1) # [0.1 0.1 0.1 ...]
-
-# collect model dimensions in a namedtuple: modDim
-mDim = {'zN' : zN,
-        'zIN' : zIN,
-        'dzN' : dzN,
-        'dzIN' : dzIN,
-        'nN' : nN,
-        'nIN' : nIN
-        }
-mDim = pd.Series(mDim)
-
-rhoW = 1000  # [kg/m3] density of water
-rhoS = 2650  # [kg/m3] density of solid phase
-rhoB = 1700  # %[kg/m3] dry bulk density of soil
-n = 1 - rhoB / rhoS  # [-] porosity of soil = saturated water content.
-q = 0.75  # quartz content
-
-# [W/(mK)] thermal conductivity of water (Remember W = J/s)
-lambdaWat = 0.58
-lambdaQuartz = 6.5  # [W/(mK)] thermal conductivity of quartz
-lambdaOther = 2.0  # [W/(mK)] thermal conductivity of other minerals
-
-lambdaSolids = lambdaQuartz ** q * lambdaOther ** (1 - q)
-lambdaBulk = lambdaWat ** n * lambdaSolids ** (1 - n)
-
-# collect soil parameters in a namedtuple: soilPar
-'zetaBN', 'lambdaIN'
-sPar = {'VGa': np.ones(np.shape(zN)) * 2,  # alpha[1/m]
-        'VGn': np.ones(np.shape(zN)) * 3,  # n[-]
-        'VGm': np.ones(np.shape(zN)) * (1 - 1 / 3),  # m = 1-1/n[-]
-        'theta_s': np.ones(np.shape(zN)) * 0.4,  # saturated water content
-        'theta_r': np.ones(np.shape(zN)) * 0.01,  # residual water content
-        'Ks': np.ones(np.shape(zN)) * 0.05,  # [m/day]
-        'zetaSol': np.ones(np.shape(zN)) * (2.235*10**6),
-        'zetaWat': np.ones(np.shape(zN)) * (4.154*10**6), #at 35C
-        'lambdaIN': np.ones(np.shape(zIN)) * lambdaBulk * (24 * 3600)}
-sPar = pd.Series(sPar)          
-
-# ## Definition of the Boundary Parameters
-# boundary parameters
-# collect boundary parameters in a named tuple boundpar...
-                  
-                                  
-bPar = {'BotCond' : 'Robbin',
-        'res_rob': 0.005,  # Robin resistance term for bottom
-        'H_rob': -1,  # pressure head at lower boundary
-        'avgT': 273.15 + 10,
-        'rangeT':20,
-        'tMin':46,
-        'topCond':'Dirichlet',
-        'lambdaRobTop':1,
-        'lambdaRobBot':0,
-        'TBndBot':(273.15 + 10)}
-bPar = pd.Series(bPar)
-  
-# ## Initial Conditions
-# Initial Conditions
-
-zRef = -0.75
-HIni = zRef - zN
-TIni = np.ones(np.shape(zN)) * (10.0 + 273.15)  # K
-#HIni = np.zeros(zN.shape)+0.1
-
-# HIni[0:25] =  np.linspace(0.25,0,25)  
-
-# Time Discretization
-tOut =  np.logspace(-14, np.log10(365), num=365) 
-nOut = np.shape(tOut)[0] 
-
-#### SOLVE ####
-def intFun(t, y):
-    nf = DivHeatFlux(t, y, sPar, mDim, bPar)
-    return nf
-
-def jacFun(t, y):
-    jac = JacHeat(t, y, sPar, mDim, bPar)
-    return (jac)
-
-
-T0 = TIni.copy().squeeze()
-# use v_stack --> stack H0 and T0 --> solve for the whole vector once 
-# jacobian will speed up our simulation 
-DivW=DivWaterFlux(t, H, T, sPar, mDim, bPar)
-DivH=DivHeatFlux(t, H, T, sPar, mDim, bPar)
-HT = np.vstack(DivWaterFlux(),DivHeatFlux())
-TODE = spi.solve_ivp(intFun, [tOut[0], tOut[-1]], T0, method='BDF',
-                         t_eval=tOut, vectorized=True, rtol=1e-8, jac=jacFun)
-
-
-plt.close('all')
-
-fig1, ax1 = plt.subplots(figsize=(7, 4))
-for ii in np.arange(0, nN, 20):
-    ax1.plot(H_ode.t, H_ode.y[ii, :], '-')
-ax1.set_title('Pressure head vs. Time')
-ax1.set_xlabel('Time [days]')
-ax1.set_ylabel('Pressure head [m]')
-ax1.grid(b=True)
-
-
-fig2, ax2 = plt.subplots(figsize=(4, 7))
-for ii in np.arange(0, nOut, 20):
-    ax2.plot(H_ode.y[:, ii], zN[:, 0], '-')
-
-
-ax2.set_title('Pressure head vs. depth over time')
-ax2.set_xlabel('Pressure head [m]')
-ax2.set_ylabel('Depth [m]')
-ax2.grid(b=True)
-
-thODE = np.zeros(np.shape(H_ode.y))
-for ii in np.arange(0, H_ode.t.size, 1):
-    hwTmp = H_ode.y[:, ii].reshape(zN.shape)
-    thODE[:, ii] = fun.wcont(hwTmp, sPar).reshape(1, nN)
-
-fig3, ax3 = plt.subplots(figsize=(7, 7))
-for ii in np.arange(0, H_ode.t.size, 1):
-    ax3.plot(thODE[:, ii], zN[:, 0], '-')
-
-# scipy.integrate.squad(thODE[:, 0], 0, -1)
-ax3.grid(b=True)
-ax3.set_title('Water content vs depth over time')
-ax3.set_xlabel('water content [-]')
-ax3.set_ylabel('depth [m]')
-
-plt.show()
-   
 #%% FUNCTIONS WATER FLUX
 def Ksat (H, T,sPar, mDim):
     nIN = mDim.nIN # 11 (depth is 1 meter discretised +1)
-    # how to interpolate 
     nr,nc = H.shape
+    rho_w = 1000
     Ksat = np.zeros([nIN, nc], dtype=H.dtype) #set permeability to zero at every node
     
     ii = np.arange(1, nIN-1) # 0-10
     temp = [273.15, 278.15, 283.15, 293.15, 303.15, 313.15, 323.15, 333.15, 343.15, 353.15, 363.15, 373.15]
     mu = [1.787, 1.519, 1.307, 1.002, 0.798, 0.653, 0.547, 0.467, 0.404, 0.355, 0.315, 0.282]
 
-    vis = interpolate.interp1d(temp,mu, kind='linear') 
-    Ksat = np.zeros([nIN, nc], dtype=H.dtype) #set permeability to zero at every node
-    ii = np.arange(1, nIN-1) # 0-10
+    vis = interpolate.interp1d(temp,mu, kind = 'linear') 
+    ii = np.arange(1, nIN-1) 
     
-    Ksat[ii] = (sPar.kapsat*sPar.rho_w*sPar.g)/vis  
+    Ksat[ii] = (sPar.kapsat*rho_w*sPar.g)/vis(T)  
     #Ksat[0] = Kn[0]
     #Ksat[nIN-1]= Kn[nIN-2]
     # VRAGEN 
 
     return Ksat
 
-def Seff(H,sPar, T): 
+def Seff(H,sPar): 
     #sPar defined later in code: soil parameters
     #in sPar the empirical parameters n, alpha and m are defined
     hc = -H
@@ -210,10 +66,10 @@ def CeffMat(H, sPar, mDim):
     S_w = theta / sPar.theta_s
     C_hw = Chw_I(H, sPar)
     beta = 4.5e-10  #compressibility
-    rhowat = 1000 #density of water
+    rho_w = 1000 #density of water
     g = 9.81
     cv = 1e-8
-    S_sw = rhowat * g *(cv + theta * beta) #Storativity
+    S_sw = rho_w * g *(cv + theta * beta) #Storativity
     cPrime = C_hw +S_w * S_sw
     
     #Ponding water condition - case when the water table is higher than GL
@@ -253,7 +109,7 @@ def BndQTop(t):
     # check of het werkt als t een vector is 
 
 
-#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 def WaterFlux(t, H, T, sPar, mDim, bPar):
     nIN = mDim.nIN
     dzN = mDim.dzN
@@ -293,7 +149,7 @@ def DivWaterFlux(t, H, T, sPar, mDim, bPar): # = d(theta)/dt
     mass = CeffMat(H, sPar, mDim)
     
     # Calculate water fluxes across all internodes
-    qW= WaterFlux(t, H, T, sPar, mDim, bPar)
+    qW = WaterFlux(t, H, T, sPar, mDim, bPar)
     divqW = np.zeros([nN, nc]).astype(H.dtype)
     
     # Calculate divergence of flux for all nodes
@@ -666,3 +522,150 @@ def JacHeat(t, H, T, sPar, mDim, bPar):
     # jac[2,0:nN-1] = c[:]
     jac = np.diag(a, -1) + np.diag(b, 0) + np.diag(c, 1)
     return jac
+
+#%% MAIN 
+
+
+# Then we start running our model.
+# First we require the domain discretization
+# Domain
+nIN = 101 #1 meter depth
+zIN = np.linspace(-1.0 , 0, num=nIN).reshape(nIN, 1) #Internodes
+# nIN = np.shape(zIN)[0]
+zN = np.zeros(nIN - 1).reshape(nIN - 1, 1) #Nodes
+zN[0, 0] = zIN[0, 0] #both nodes and internodes start at -1
+zN[1:nIN - 2, 0] = (zIN[1:nIN - 2, 0] + zIN[2:nIN - 1, 0]) / 2
+zN[nIN - 2, 0] = zIN[nIN - 1] #both nodes and internodes end at 0
+nN = np.shape(zN)[0] #number of nodes (10)
+
+ii = np.arange(0, nN - 1) # [0 1 2 3 4 5 6 7 8]
+dzN = (zN[ii + 1, 0] - zN[ii, 0]).reshape(nN - 1, 1) # [0.25 0.1 0.1 0.1 0.1 0.1 0.1 0.15]
+dzIN = (zIN[1:, 0] - zIN[0:-1, 0]).reshape(nIN - 1, 1) # [0.1 0.1 0.1 ...]
+
+# collect model dimensions in a namedtuple: modDim
+mDim = {'zN' : zN,
+        'zIN' : zIN,
+        'dzN' : dzN,
+        'dzIN' : dzIN,
+        'nN' : nN,
+        'nIN' : nIN
+        }
+mDim = pd.Series(mDim)
+
+rho_w = 1000  # [kg/m3] density of water
+rhoS = 2650  # [kg/m3] density of solid phase
+rhoB = 1700  # %[kg/m3] dry bulk density of soil
+n = 1 - rhoB / rhoS  # [-] porosity of soil = saturated water content.
+q = 0.75  # quartz content
+
+# [W/(mK)] thermal conductivity of water (Remember W = J/s)
+lambdaWat = 0.58
+lambdaQuartz = 6.5  # [W/(mK)] thermal conductivity of quartz
+lambdaOther = 2.0  # [W/(mK)] thermal conductivity of other minerals
+
+lambdaSolids = lambdaQuartz ** q * lambdaOther ** (1 - q)
+lambdaBulk = lambdaWat ** n * lambdaSolids ** (1 - n)
+
+# collect soil parameters in a namedtuple: soilPar
+'zetaBN', 'lambdaIN'
+sPar = {'VGa': np.ones(np.shape(zN)) * 2,  # alpha[1/m]
+        'VGn': np.ones(np.shape(zN)) * 3,  # n[-]
+        'VGm': np.ones(np.shape(zN)) * (1 - 1 / 3),  # m = 1-1/n[-]
+        'theta_s': np.ones(np.shape(zN)) * 0.4,  # saturated water content
+        'theta_r': np.ones(np.shape(zN)) * 0.01,  # residual water content
+        'Ks': np.ones(np.shape(zN)) * 0.05,  # [m/day]
+        'kapsat': np.ones(np.shape(zIN)) * 0.05, #is kapsat hetzelfde as Ks?
+        'zetaSol': np.ones(np.shape(zN)) * (2.235*10**6),
+        'zetaWat': np.ones(np.shape(zN)) * (4.154*10**6), #at 35C
+        'lambdaIN': np.ones(np.shape(zIN)) * lambdaBulk * (24 * 3600),
+        'g': np.ones(np.shape(zIN)) * 9.81}
+sPar = pd.Series(sPar)          
+
+# ## Definition of the Boundary Parameters
+# boundary parameters
+# collect boundary parameters in a named tuple boundpar...
+                  
+                                  
+bPar = {'BotCond' : 'Robbin',
+        'res_rob': 0.005,  # Robin resistance term for bottom
+        'H_rob': -1,  # pressure head at lower boundary
+        'avgT': 273.15 + 10,
+        'rangeT':20,
+        'tMin':46,
+        'topCond':'Dirichlet',
+        'lambdaRobTop':1,
+        'lambdaRobBot':0,
+        'TBndBot':(273.15 + 10)}
+bPar = pd.Series(bPar)
+  
+# ## Initial Conditions
+# Initial Conditions
+
+zRef = -0.75
+HIni = zRef - zN
+TIni = np.ones(np.shape(zN)) * (10.0 + 273.15)  # K
+HIni = np.zeros(zN.shape)+0.1
+
+# HIni[0:25] =  np.linspace(0.25,0,25)  
+
+# Time Discretization
+tOut =  np.logspace(-14, np.log10(365), num=365) 
+nOut = np.shape(tOut)[0] 
+
+#### SOLVE ####
+# def intFun(t, y):
+#     nf = DivHeatFlux(t, y, sPar, mDim, bPar)
+#     return nf
+
+# def jacFun(t, y):
+#     jac = JacHeat(t, y, sPar, mDim, bPar)
+#     return (jac)
+
+
+T0 = TIni.copy().squeeze()
+# use v_stack --> stack H0 and T0 --> solve for the whole vector once 
+# jacobian will speed up our simulation 
+DivW = DivWaterFlux(tOut, HIni, TIni, sPar, mDim, bPar)
+DivH = DivHeatFlux(tOut, HIni, TIni, sPar, mDim, bPar)
+HT   = np.vstack(DivWaterFlux(),DivHeatFlux())
+TODE = spi.solve_ivp(intFun, [tOut[0], tOut[-1]], T0, method='BDF',
+                         t_eval=tOut, vectorized=True, rtol=1e-8, jac=jacFun)
+
+
+plt.close('all')
+
+fig1, ax1 = plt.subplots(figsize=(7, 4))
+for ii in np.arange(0, nN, 20):
+    ax1.plot(TODE.t, TODE.y[ii, :], '-')
+ax1.set_title('Pressure head vs. Time')
+ax1.set_xlabel('Time [days]')
+ax1.set_ylabel('Pressure head [m]')
+ax1.grid(b=True)
+
+
+fig2, ax2 = plt.subplots(figsize=(4, 7))
+for ii in np.arange(0, nOut, 20):
+    ax2.plot(TODE.y[:, ii], zN[:, 0], '-')
+
+
+ax2.set_title('Pressure head vs. depth over time')
+ax2.set_xlabel('Pressure head [m]')
+ax2.set_ylabel('Depth [m]')
+ax2.grid(b=True)
+
+thODE = np.zeros(np.shape(TODE.y))
+for ii in np.arange(0, TODE.t.size, 1):
+    hwTmp = TODE.y[:, ii].reshape(zN.shape)
+    thODE[:, ii] = wcont(hwTmp, sPar).reshape(1, nN)
+
+fig3, ax3 = plt.subplots(figsize=(7, 7))
+for ii in np.arange(0, TODE.t.size, 1):
+    ax3.plot(thODE[:, ii], zN[:, 0], '-')
+
+# scipy.integrate.squad(thODE[:, 0], 0, -1)
+ax3.grid(b=True)
+ax3.set_title('Water content vs depth over time')
+ax3.set_xlabel('water content [-]')
+ax3.set_ylabel('depth [m]')
+
+plt.show()

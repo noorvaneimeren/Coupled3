@@ -2,7 +2,6 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import Assignment2 as fun
 import scipy.integrate
 from scipy import interpolate
 
@@ -54,8 +53,8 @@ sPar = {'VGa': np.ones(np.shape(zN)) * 2,  # alpha[1/m]
         'theta_s': np.ones(np.shape(zN)) * 0.4,  # saturated water content
         'theta_r': np.ones(np.shape(zN)) * 0.01,  # residual water content
         'Ks': np.ones(np.shape(zN)) * 0.05,  # [m/day]
-        'zetaBN': np.ones(np.shape(zN)) * ((1 - n) * zetaSol
-                                                    + n * zetaWat),
+        'zetaSol': np.ones(np.shape(zN)) * (2.235*10**6),
+        'zetaWat': np.ones(np.shape(zN)) * (4.154*10**6), #at 35C
         'lambdaIN': np.ones(np.shape(zIN)) * lambdaBulk * (24 * 3600)}
 sPar = pd.Series(sPar)          
 
@@ -92,20 +91,23 @@ nOut = np.shape(tOut)[0]
 
 #### SOLVE ####
 def intFun(t, y):
-        nf = DivHeatFlux(t, y, sPar, mDim, bPar)
-        return nf
+    nf = DivHeatFlux(t, y, sPar, mDim, bPar)
+    return nf
 
-    def jacFun(t, y):
-        jac = JacHeat(t, y, sPar, mDim, bPar)
-        return (jac)
+def jacFun(t, y):
+    jac = JacHeat(t, y, sPar, mDim, bPar)
+    return (jac)
 
 
 T0 = TIni.copy().squeeze()
+# use v_stack --> stack H0 and T0 --> solve for the whole vector once 
+# jacobian will speed up our simulation 
+DivW=DivWaterFlux(t, H, T, sPar, mDim, bPar)
+DivH=DivHeatFlux(t, H, T, sPar, mDim, bPar)
+HT = np.vstack(DivWaterFlux(),DivHeatFlux())
 TODE = spi.solve_ivp(intFun, [tOut[0], tOut[-1]], T0, method='BDF',
                          t_eval=tOut, vectorized=True, rtol=1e-8, jac=jacFun)
-H_ode = fun.IntegrateWF(tOut, HIni, sPar, mDim, bPar)
 
-tOut = H_ode.t
 
 plt.close('all')
 
@@ -146,7 +148,7 @@ ax3.set_ylabel('depth [m]')
 plt.show()
    
 #%% FUNCTIONS WATER FLUX
-def Ksat (T,sPar, mDim, H):
+def Ksat (H, T,sPar, mDim):
     nIN = mDim.nIN # 11 (depth is 1 meter discretised +1)
     # how to interpolate 
     nr,nc = H.shape
@@ -161,9 +163,9 @@ def Ksat (T,sPar, mDim, H):
     ii = np.arange(1, nIN-1) # 0-10
     
     Ksat[ii] = (sPar.kapsat*sPar.rho_w*sPar.g)/vis  
-    Ksat[ii] =  np.minimum(Kn[ii-1], Kn[ii])
-    Ksat[0] = Kn[0]
-    Ksat [ii] = (sPar.kapsat*rho_w*sPar.g) / vis(T)
+    #Ksat[0] = Kn[0]
+    #Ksat[nIN-1]= Kn[nIN-2]
+    # VRAGEN 
 
     return Ksat
 
@@ -220,11 +222,11 @@ def CeffMat(H, sPar, mDim):
         
     return cPrime
 
-def Kvec(H, sPar, mDim, T): 
+def Kvec(H, T, sPar, mDim): 
     #function to fill in effective permeability at nodes
     nIN = mDim.nIN # 11 (depth is 1 meter discretised +1)
     #zIN = mDim.zIN # nodes [-1 0.9 0.8 0.7 ... 0]^T 
-    ksat = Ksat (T,sPar, mDim, H)
+    ksat = Ksat (H, T, sPar, mDim)
     nr,nc = H.shape
     
     Sef = Seff(H, sPar)
@@ -252,38 +254,38 @@ def BndQTop(t):
 
 
 #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-def WaterFlux(t, H, sPar, mDim, bPar, T):
+def WaterFlux(t, H, T, sPar, mDim, bPar):
     nIN = mDim.nIN
     dzN = mDim.dzN
     nr,nc = H.shape
     
-    KIN=Kvec(H, sPar, mDim, T)
+    KIN=Kvec(H, T, sPar, mDim)
 
-    q = np.zeros([nIN,nc],dtype=H.dtype)
+    qw = np.zeros([nIN,nc],dtype=H.dtype)
 
     # flux at top boundary
     bndQtop = BndQTop(t)
-    q[nIN-1] = bndQtop  
+    qw[nIN-1] = bndQtop  
 
     # Flux in all intermediate nodes
     ii = np.arange(1, nIN - 1)
     
-    q[ii] = -KIN[ii]*((H[ii] - H[ii - 1])/ dzN[ii - 1]+1) 
+    qw[ii] = -KIN[ii]*((H[ii] - H[ii - 1])/ dzN[ii - 1]+1) 
     #flux difference between nodes
    
     if bPar.BotCond == 'Gravity':
         #case for which there is only gravity flow
-        q[0] = -KIN[0] #infiltration at bottom, head is zero          
+        qw[0] = -KIN[0] #infiltration at bottom, head is zero          
 
     else: 
         # mixed condition
         # bPar.BotCond == 'Robbin'
-        q[0] = -bPar.res_rob*(H[0] - bPar.H_rob) 
+        qw[0] = -bPar.res_rob*(H[0] - bPar.H_rob) 
         
-    return q
+    return qw
 
 
-def DivWaterFlux(t, H, sPar, mDim, bPar, T): # = d(theta)/dt
+def DivWaterFlux(t, H, T, sPar, mDim, bPar): # = d(theta)/dt
     nN = mDim.nN
     dzIN = mDim.dzIN
     nr,nc = H.shape
@@ -291,29 +293,29 @@ def DivWaterFlux(t, H, sPar, mDim, bPar, T): # = d(theta)/dt
     mass = CeffMat(H, sPar, mDim)
     
     # Calculate water fluxes across all internodes
-    qH = WaterFlux(t, H, sPar, mDim, bPar, T)
-    divqH = np.zeros([nN, nc]).astype(H.dtype)
+    qW= WaterFlux(t, H, T, sPar, mDim, bPar)
+    divqW = np.zeros([nN, nc]).astype(H.dtype)
     
     # Calculate divergence of flux for all nodes
     ii = np.arange(0, nN)
-    divqH[ii] = -(qH[ii + 1] - qH[ii]) \
+    divqW[ii] = -(qW[ii + 1] - qW[ii]) \
                    / (dzIN[ii] * mass[ii])
 
-    return divqH
+    return divqW
 
 # functions to make the implicit solution easier
 # Fill_kMat_water, Fill_mMat_water and Fill_yVec_water
 
 
 #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-def FillkMatWater(t, H, sPar, mDim, bPar, T):
+def FillkMatWater(t, H, T, sPar, mDim, bPar):
 
     nN = mDim.nN
     dzN = mDim.dzN
     dzIN = mDim.dzIN
     
     K_rob = bPar.res_rob # to define robin conditions??
-    KIN = Kvec(H, sPar, mDim, T)
+    KIN = Kvec(H, T, sPar, mDim)
 
     a = np.zeros(nN, dtype=H.dtype) #dimensions 11 x 1
     b = np.zeros(nN, dtype=H.dtype)
@@ -391,11 +393,11 @@ def FillyVecWater(t, H, sPar, mDim, bPar):
     return yVec
 
 
-def JacWater(t, H, sPar, mDim, bPar, T):
+def JacWater(t, H, T, sPar, mDim, bPar):
     # Function calculates the jacobian matrix for the Richards equation
     nN = mDim.nN
     
-    kMat = FillkMatWater(t, H, sPar, mDim, bPar, T)
+    kMat = FillkMatWater(t, H, T, sPar, mDim, bPar)
     M_Mat = CeffMat(H, sPar, mDim)
 
     # massMD = np.diag(FillmMatWater(t, H, sPar, mDim, bPar)).copy()
@@ -407,7 +409,7 @@ def JacWater(t, H, sPar, mDim, bPar, T):
     jac = np.diag(a, -1) + np.diag(b, 0) + np.diag(c, 1)
     return jac
 
-def IntegrateWF(tRange, iniSt, sPar, mDim, bPar, T):
+def IntegrateWF(T, tRange, iniSt, sPar, mDim, bPar):
 
     def dYdt(t, H):
 
@@ -447,19 +449,55 @@ def IntegrateWF(tRange, iniSt, sPar, mDim, bPar, T):
     return int_result
 
 #%% FUNCTIONS HEAT
+
+#define duntion lamda 
+def LambdaCalc (H,T, sPar):
+
+    Wat= wcont(H, sPar)
+    Sat = Wat/n
+    lambdaWat = 0.58
+    lambdaQuartz = 6.5  # [W/(mK)] thermal conductivity of quartz
+    lambdaOther = 2.0  # [W/(mK)] thermal conductivity of other minerals
+    lambdaA = (0.0025 + 0.0736*Sat)
+    
+    g = np.array ([0.015+(0.333-0.015)*Sat, 0.015+(0.333-0.015)*Sat, 1-(2*(0.015+(0.333-0.015)))])
+    Fw = 1
+    Fs1 = 0
+    Fa1 = 0
+    for i in [1,2,3]:
+        Fa1 += ((1+(lambdaA/lambdaWat-1)*g[i]))**-1
+        Fs1 += ((1+(lambdaQuartz/lambdaWat-1)*g[i]))**-1
+    Fa = Fa1*(1/3)
+    Fs = Fs1*(1/3)
+    
+    Lambda = (Fs*lambdaQuartz*(1-n)+Fw*lambdaWat*n*Sat+Fa*lambdaA*n*(1-Sat))/(Fs*(1-n)+Fw*n*Sat+Fa*n(1-Sat))
+    
+    return Lambda
+
+
+def ZetaBCalc (H, T, sPar, mDim):
+    zN = mDim.zN
+     
+    Wat= wcont(H, sPar)
+    Sat = Wat/n
+    zetaB= np.ones(np.shape(zN)) * ((1 - n)  * sPar.zetaSol + n * sPar.zetaWat * Sat)
+    
+    return zetaB
+    
+    
 def BndTTop(t, bPar):
     bndT = bPar.avgT - bPar.rangeT * np.cos(2 * np.pi
                                             * (t - bPar.tMin) / 365.25)
     return bndT
 
 
-def HeatFlux(t, T, sPar, mDim, bPar, #H):
+def HeatFlux(t, H, T, sPar, mDim, bPar):
     nIN = mDim.nIN
     nN = mDim.nN
     dzN = mDim.dzN
-    lambdaIN = sPar.lambdaIN # should depend on water content
-
-    q = np.zeros((nIN, 1))
+    lambdaIN = LambdaCalc (H, T, sPar)
+    qW = WaterFlux(t, H, T, sPar, mDim, bPar)
+    qh = np.zeros((nIN, 1))
 
     # Temperature at top boundary
     bndT = BndTTop(t, bPar)
@@ -468,37 +506,37 @@ def HeatFlux(t, T, sPar, mDim, bPar, #H):
     # locT = np.ones(np.shape(T)) * T
     locT = T.copy()
     if bPar.topCond.lower() == 'Gravity':
-        locT[nN - 1, 0] = bndT
+        locT[nN - 1] = bndT
 
     # Calculate heat flux in domain
     # Bottom layer Robin condition
-    q[0, 0] = 0.0
-    q[0, 0] = -bPar.lambdaRobBot * (T[0, 0] - bPar.TBndBot)
+    qh[0] = 0.0
+    qh[0] = -bPar.lambdaRobBot * (T[0] - bPar.TBndBot)
 
     # Flux in all intermediate nodes
     ii = np.arange(1, nIN - 1)
-    q[ii, 0] = -lambdaIN[ii, 0] * ((locT[ii, 0] - locT[ii - 1, 0])
-                                   / dzN[ii - 1, 0])
+    qh[ii] = -lambdaIN[ii, 0] * ((locT[ii] - locT[ii - 1])
+                                   / dzN[ii - 1]) + sPar.zetaWat*qW[ii]*locT[ii]
     # Top layer
     if bPar.topCond.lower() == 'Gravity':
         # Temperature is forced, so we ensure that divergence of flux in top
         # layeris zero...
-        q[nIN-1, 0] = q[nIN - 2, 0]
+        qh[nIN-1] = q[nIN - 2]
     else:
         # Robin condition
-        q[nIN-1, 0] = -bPar.lambdaRobTop * (bndT - T[nN-1, 0])
+        qh[nIN-1] = -bPar.lambdaRobTop * (bndT - T[nN-1])
 
-    return q
+    return qh
 
 
-def DivHeatFlux(t, T, sPar, mDim, bPar):
+def DivHeatFlux(t, H, T, sPar, mDim, bPar):
     nN = mDim.nN
     dzIN = mDim.dzIN
     locT = T.copy()
-    zetaBN = np.diag(FillmMatHeat(t, locT, sPar, mDim, bPar ))
+    zetaBN = np.diag(FillmMatHeat(t, H, locT, sPar, mDim, bPar )) #????????
 
     # Calculate heat fluxes accross all internodes
-    qH = HeatFlux(t, locT, sPar, mDim, bPar)
+    qH = HeatFlux(t, H, locT, sPar, mDim, bPar)
 
     divqH = np.zeros([nN, 1])
     # Calculate divergence of flux for all nodes
@@ -508,7 +546,7 @@ def DivHeatFlux(t, T, sPar, mDim, bPar):
 
     # Top condition is special
     ii = nN-1
-    if bPar.topCond.lower() == 'dirichlet':
+    if bPar.topCond.lower() == 'Gravity':
         divqH[ii,0] = 0
     else:
         divqH[ii, 0] = -(qH[ii + 1, 0] - qH[ii, 0]) \
@@ -525,9 +563,9 @@ def DivHeatFlux(t, T, sPar, mDim, bPar):
 # Fill_kMat_Heat, Fill_mMat_Heat and Fill_yVec_Heat.
 
 
-def FillkMatHeat(t, T, sPar, mDim, bPar):
-    lambdaIN = sPar.lambdaIN
-    zetaBN = sPar.zetaBN
+def FillkMatHeat(t, H, T, sPar, mDim, bPar):
+    lambdaIN = LambdaCalc(H, T, sPar)
+    zetaBN = ZetaBCalc(H, T, sPar, mDim)
 
     nN = mDim.nN
     nIN = mDim.nIN
@@ -560,7 +598,7 @@ def FillkMatHeat(t, T, sPar, mDim, bPar):
     c[ii, 0] = lambdaIN[ii + 1, 0] / (dzIN[ii, 0] * dzN[ii, 0])
 
     # Top boundary
-    if bPar.topCond.lower() == 'dirichlet':
+    if bPar.topCond.lower() == 'Gravity':
         a[nN-1, 0] = 0
         b[nN-1, 0] = -1
         c[nN-1, 0] = 0
@@ -575,10 +613,10 @@ def FillkMatHeat(t, T, sPar, mDim, bPar):
     return kMat
 
 
-def FillmMatHeat(t, T, sPar, mDim, bPar):
-    zetaBN = sPar.zetaBN
-    if bPar.topCond.lower() == 'dirichlet':
-        zetaBN[mDim.nN - 1, 0] = 0
+def FillmMatHeat(t, H, T, sPar, mDim, bPar):
+    zetaBN = ZetaBCalc(H, T, sPar, mDim)
+    if bPar.topCond.lower() == 'Gravity':
+        zetaBN[mDim.nN - 1] = 0
     mMat = np.diag(zetaBN.squeeze(), 0)
     return mMat
 
@@ -592,7 +630,7 @@ def FillyVecHeat(t, T, sPar, mDim, bPar):
     yVec[0, 0] = bPar.lambdaRobBot / mDim.dzIN[0,0] * bPar.TBndBot
 
     # Top Boundary (Known temperature)
-    if bPar.topCond.lower() == 'dirichlet':
+    if bPar.topCond.lower() == 'Gravity':
         yVec[nN-1, 0] = BndTTop(t, bPar)
     else:
         # Robin condition
@@ -601,18 +639,18 @@ def FillyVecHeat(t, T, sPar, mDim, bPar):
     return yVec
 
 
-def JacHeat(t, T, sPar, mDim, bPar):
+def JacHeat(t, H, T, sPar, mDim, bPar):
     # Function calculates the jacobian matrix for the Richards equation
     nN = mDim.nN
     locT = T.copy().reshape(nN, 1)
-    kMat = FillkMatHeat(t, locT, sPar, mDim, bPar)
-    massMD = np.diag(FillmMatHeat(t, locT, sPar, mDim, bPar)).copy()
+    kMat = FillkMatHeat(t, H, locT, sPar, mDim, bPar)
+    massMD = np.diag(FillmMatHeat(t, H, locT, sPar, mDim, bPar)).copy()
 
     a = np.diag(kMat, -1).copy()
     b = np.diag(kMat, 0).copy()
     c = np.diag(kMat, 1).copy()
 
-    if bPar.topCond.lower() == 'dirichlet':
+    if bPar.topCond.lower() == 'Gravity':
         # massMD(nN-1,1) = 0 so we cannot divide by massMD but we know that the
         # Jacobian should be zero so we set b[nN-1,0] to zero instead and
         # massMD[nN-1,0] to 1.

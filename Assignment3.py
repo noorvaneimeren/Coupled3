@@ -6,23 +6,22 @@ from scipy import interpolate
 
 #%% FUNCTIONS WATER FLUX
 def Ksat (H, T,sPar, mDim):
-    nIN = mDim.nIN # 11 (depth is 1 meter discretised +1)
+    nIN = mDim.nIN 
     nr,nc = H.shape
     rho_w = 1000
+    
     Ksat = np.zeros([nIN, nc], dtype=H.dtype) #set permeability to zero at every node
     
-    ii = np.arange(1, nIN-1) # 0-10
     temp = [273.15, 278.15, 283.15, 293.15, 303.15, 313.15, 323.15, 333.15, 343.15, 353.15, 363.15, 373.15]
     mu = [1.787, 1.519, 1.307, 1.002, 0.798, 0.653, 0.547, 0.467, 0.404, 0.355, 0.315, 0.282]
 
-    vis = interpolate.interp1d(temp,mu, kind = 'linear') 
+    vis = interpolate.interp1d(temp, mu, kind = 'linear') 
     ii = np.arange(1, nIN-1) 
     
     Ksat[ii] = (sPar.kapsat*rho_w*sPar.g)/vis(T)  
     #Ksat[0] = Kn[0]
     #Ksat[nIN-1]= Kn[nIN-2]
     # VRAGEN 
-
     return Ksat
 
 def Seff(H,sPar): 
@@ -574,11 +573,11 @@ sPar = {'VGa': np.ones(np.shape(zN)) * 2,  # alpha[1/m]
         'theta_s': np.ones(np.shape(zN)) * 0.4,  # saturated water content
         'theta_r': np.ones(np.shape(zN)) * 0.01,  # residual water content
         'Ks': np.ones(np.shape(zN)) * 0.05,  # [m/day]
-        'kapsat': np.ones(np.shape(zIN)) * 0.05, #is kapsat hetzelfde as Ks?
+        'kapsat': np.ones(np.shape(zN)) * 0.05, #is kapsat hetzelfde as Ks?
         'zetaSol': np.ones(np.shape(zN)) * (2.235*10**6),
         'zetaWat': np.ones(np.shape(zN)) * (4.154*10**6), #at 35C
-        'lambdaIN': np.ones(np.shape(zIN)) * lambdaBulk * (24 * 3600),
-        'g': np.ones(np.shape(zIN)) * 9.81}
+        'lambdaIN': np.ones(np.shape(zN)) * lambdaBulk * (24 * 3600),
+        'g': np.ones(np.shape(zN)) * 9.81}
 sPar = pd.Series(sPar)          
 
 # ## Definition of the Boundary Parameters

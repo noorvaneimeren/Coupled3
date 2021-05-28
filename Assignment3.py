@@ -2,30 +2,28 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import scipy.integrate as spi
+import scipy.sparse as sp
 from scipy import interpolate
 
 #%% FUNCTIONS WATER FLUX
-def Ksat (H, T,sPar, mDim):
-    nIN = mDim.nIN 
-    nr,nc = H.shape
-    rho_w = 1000
+def Ksat (H,T,sPar,mDim):
+    nN = mDim.nN 
     
-    Ksat = np.zeros([nIN, nc], dtype=H.dtype) #set permeability to zero at every node
+    nr,nc = H.shape
+    
+    Ksat = np.zeros([nN, nc], dtype=H.dtype) #set permeability to zero at every node
     
     temp = [273.15, 278.15, 283.15, 293.15, 303.15, 313.15, 323.15, 333.15, 343.15, 353.15, 363.15, 373.15]
     mu = [1.787, 1.519, 1.307, 1.002, 0.798, 0.653, 0.547, 0.467, 0.404, 0.355, 0.315, 0.282]
 
     vis = interpolate.interp1d(temp, mu, kind = 'linear') 
-    ii = np.arange(1, nIN-1) 
     
-    Ksat[ii] = (sPar.kapsat*rho_w*sPar.g)/vis(T)  
-    #Ksat[0] = Kn[0]
-    #Ksat[nIN-1]= Kn[nIN-2]
-    # VRAGEN 
+    ii = np.arange(0, nN) 
+    Ksat[ii] = (sPar.kapsat*sPar.rho_w*sPar.g)/vis(300) # dit werkt niet voor T, wel voor een getal
+
     return Ksat
 
 def Seff(H,sPar): 
-    #sPar defined later in code: soil parameters
     #in sPar the empirical parameters n, alpha and m are defined
     hc = -H
     Seff = (1+((hc*(hc>0))*sPar.VGa)**sPar.VGn)**(-sPar.VGm)
@@ -81,7 +79,7 @@ def Kvec(H, T, sPar, mDim):
     #function to fill in effective permeability at nodes
     nIN = mDim.nIN # 11 (depth is 1 meter discretised +1)
     #zIN = mDim.zIN # nodes [-1 0.9 0.8 0.7 ... 0]^T 
-    ksat = Ksat (H, T, sPar, mDim)
+    ksat = Ksat(H,T,sPar, mDim)
     nr,nc = H.shape
     
     Sef = Seff(H, sPar)
@@ -114,7 +112,7 @@ def WaterFlux(t, H, T, sPar, mDim, bPar):
     dzN = mDim.dzN
     nr,nc = H.shape
     
-    KIN=Kvec(H, T, sPar, mDim)
+    KIN = Kvec(H, T, sPar, mDim)
 
     qw = np.zeros([nIN,nc],dtype=H.dtype)
 
@@ -163,48 +161,48 @@ def DivWaterFlux(t, H, T, sPar, mDim, bPar): # = d(theta)/dt
 
 
 #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-def FillkMatWater(t, H, T, sPar, mDim, bPar):
+# def FillkMatWater(t, H, T, sPar, mDim, bPar):
 
-    nN = mDim.nN
-    dzN = mDim.dzN
-    dzIN = mDim.dzIN
+#     nN = mDim.nN
+#     dzN = mDim.dzN
+#     dzIN = mDim.dzIN
     
-    K_rob = bPar.res_rob # to define robin conditions??
-    KIN = Kvec(H, T, sPar, mDim)
+#     K_rob = bPar.res_rob # to define robin conditions??
+#     KIN = Kvec(H, T, sPar, mDim)
 
-    a = np.zeros(nN, dtype=H.dtype) #dimensions 11 x 1
-    b = np.zeros(nN, dtype=H.dtype)
-    c = np.zeros(nN, dtype=H.dtype)
+#     a = np.zeros(nN, dtype=H.dtype) #dimensions 11 x 1
+#     b = np.zeros(nN, dtype=H.dtype)
+#     c = np.zeros(nN, dtype=H.dtype)
 
-    # Fill KMat
-    # lower boundary
-    if bPar.BotCond == 'Gravity':
-        a[0] = 0
-        b[0] = -KIN[1,0] / (dzIN[0,0] * dzN[0,0])
-        c[0] = KIN[1,0] / (dzIN[0,0] * dzN[0,0])
-    else:
-        a[0] = 0
-        b[0] = (-K_rob/ dzIN[0,0]) - (KIN[1,0] / (dzIN[0,0] * dzN[0,0]))
-        c[0] = KIN[1, 0] / (dzIN[0, 0] * dzN[0, 0])
+#     # Fill KMat
+#     # lower boundary
+#     if bPar.BotCond == 'Gravity':
+#         a[0] = 0
+#         b[0] = -KIN[1,0] / (dzIN[0,0] * dzN[0,0])
+#         c[0] = KIN[1,0] / (dzIN[0,0] * dzN[0,0])
+#     else:
+#         a[0] = 0
+#         b[0] = (-K_rob/ dzIN[0,0]) - (KIN[1,0] / (dzIN[0,0] * dzN[0,0]))
+#         c[0] = KIN[1, 0] / (dzIN[0, 0] * dzN[0, 0])
     
-    # middle nodes
-    ii = np.arange(1, nN - 1)
-    a[ii] = KIN[ii, 0] / (dzIN[ii, 0] * dzN[ii - 1, 0])
+#     # middle nodes
+#     ii = np.arange(1, nN - 1)
+#     a[ii] = KIN[ii, 0] / (dzIN[ii, 0] * dzN[ii - 1, 0])
 
-    b[ii] = -(KIN[ii, 0] / (dzIN[ii, 0] * dzN[ii - 1, 0])
-                 + KIN[ii + 1, 0] / (dzIN[ii, 0] * dzN[ii, 0]))
+#     b[ii] = -(KIN[ii, 0] / (dzIN[ii, 0] * dzN[ii - 1, 0])
+#                  + KIN[ii + 1, 0] / (dzIN[ii, 0] * dzN[ii, 0]))
 
-    c[ii] = KIN[ii + 1, 0] / (dzIN[ii, 0] * dzN[ii, 0])
+#     c[ii] = KIN[ii + 1, 0] / (dzIN[ii, 0] * dzN[ii, 0])
     
     
-    # Upper boundary
-    ii = nN - 1
-    a[ii] = KIN[ii, 0] / (dzIN[ii, 0] * dzN[ii - 1, 0])
-    b[ii] = -KIN[ii, 0] / (dzIN[ii, 0] * dzN[ii - 1, 0])
-    c[ii] = 0
+#     # Upper boundary
+#     ii = nN - 1
+#     a[ii] = KIN[ii, 0] / (dzIN[ii, 0] * dzN[ii - 1, 0])
+#     b[ii] = -KIN[ii, 0] / (dzIN[ii, 0] * dzN[ii - 1, 0])
+#     c[ii] = 0
     
-    kMat = np.diag(a[1:nN, 0], -1) + np.diag(b, 0) + np.diag(c[0:nN - 1], 1)
-    return kMat
+#     kMat = np.diag(a[1:nN, 0], -1) + np.diag(b, 0) + np.diag(c[0:nN - 1], 1)
+#     return kMat
 
 
 # def FillmMatWater(t, H, sPar, mDim, bPar):
@@ -218,90 +216,52 @@ def FillkMatWater(t, H, T, sPar, mDim, bPar):
 #     return d
 
 
-def FillyVecWater(t, H, sPar, mDim, bPar):
-    nN = mDim.nN
-    dzIN = mDim.dzIN
-    yVec = np.zeros([nN,1])
+# def FillyVecWater(t, H, sPar, mDim, bPar):
+#     nN = mDim.nN
+#     dzIN = mDim.dzIN
+#     yVec = np.zeros([nN,1])
 
-   # Top Boundary
-    yVec[nN] = BndQTop(t)
-    KIN = Kvec(H, sPar, mDim)
-    qBnd = BndQTop(t)
+#    # Top Boundary
+#     yVec[nN] = BndQTop(t)
+#     KIN = Kvec(H, sPar, mDim)
+#     qBnd = BndQTop(t)
     
-    # Lower Boundary 
-    if bPar.BotCond == 'Gravity':
-        #case for which there is only gravity flow
-        yVec[0,0] = -KIN[0,0]/ dzIN[0, 0] + KIN[1, 0] / dzIN[0, 0] #infiltration at bottom, head is zero          
+#     # Lower Boundary 
+#     if bPar.BotCond == 'Gravity':
+#         #case for which there is only gravity flow
+#         yVec[0,0] = -KIN[0,0]/ dzIN[0, 0] + KIN[1, 0] / dzIN[0, 0] #infiltration at bottom, head is zero          
 
-    else: 
-        # mixed condition
-        # bPar.BotCond == 'Robbin'
-        yVec[0,0] = bPar.res_rob / dzIN[0, 0] * bPar.H_rob  + KIN[1, 0] / dzIN[0, 0]
+#     else: 
+#         # mixed condition
+#         # bPar.BotCond == 'Robbin'
+#         yVec[0,0] = bPar.res_rob / dzIN[0, 0] * bPar.H_rob  + KIN[1, 0] / dzIN[0, 0]
         
         
-        # middel nodes
-    ii = np.arange(1, nN - 1)
-    yVec[ii, 0] = -KIN[ii, 0] / dzIN[ii, 0] + KIN[ii + 1, 0] / dzIN[ii, 0]
-    # Upper boundary
-    ii = nN - 1
-    yVec[ii, 0] = -KIN[ii, 0] / dzIN[ii, 0] - qBnd / dzIN[ii, 0]
-    return yVec
+#         # middel nodes
+#     ii = np.arange(1, nN - 1)
+#     yVec[ii, 0] = -KIN[ii, 0] / dzIN[ii, 0] + KIN[ii + 1, 0] / dzIN[ii, 0]
+#     # Upper boundary
+#     ii = nN - 1
+#     yVec[ii, 0] = -KIN[ii, 0] / dzIN[ii, 0] - qBnd / dzIN[ii, 0]
+#     return yVec
 
 
-def JacWater(t, H, T, sPar, mDim, bPar):
-    # Function calculates the jacobian matrix for the Richards equation
-    nN = mDim.nN
+# def JacWater(t, H, T, sPar, mDim, bPar):
+#     # Function calculates the jacobian matrix for the Richards equation
+#     nN = mDim.nN
     
-    kMat = FillkMatWater(t, H, T, sPar, mDim, bPar)
-    M_Mat = CeffMat(H, sPar, mDim)
+#     kMat = FillkMatWater(t, H, T, sPar, mDim, bPar)
+#     M_Mat = CeffMat(H, sPar, mDim)
 
-    # massMD = np.diag(FillmMatWater(t, H, sPar, mDim, bPar)).copy()
-    jac = np.zeros((3, nN)) #3x11
-    a = np.diag(kMat, -1) / M_Mat[1:nN,0]
-    b = np.diag(kMat, 0) / M_Mat[0:nN,0]
-    c = np.diag(kMat, 1) / M_Mat[0:nN-1,0]
+#     # massMD = np.diag(FillmMatWater(t, H, sPar, mDim, bPar)).copy()
+#     jac = np.zeros((3, nN)) #3x11
+#     a = np.diag(kMat, -1) / M_Mat[1:nN,0]
+#     b = np.diag(kMat, 0) / M_Mat[0:nN,0]
+#     c = np.diag(kMat, 1) / M_Mat[0:nN-1,0]
 
-    jac = np.diag(a, -1) + np.diag(b, 0) + np.diag(c, 1)
-    return jac
+#     jac = np.diag(a, -1) + np.diag(b, 0) + np.diag(c, 1)
+#     return jac
 
-def IntegrateWF(T, tRange, iniSt, sPar, mDim, bPar):
-
-    def dYdt(t, H):
-
-        if len(H.shape)==1:
-            H = H.reshape(mDim.nN,1)
-        rates = DivWaterFlux(t, H, sPar, mDim, bPar)
-
-        return rates
-
-    def jacFun(t,y):
-        if len(y.shape)==1:
-            y = y.reshape(mDim.nN,1)
-
-        nr, nc = y.shape
-        dh = np.sqrt(np.finfo(float).eps)
-        jac = np.zeros((nr,nr))
-        for ii in np.arange(nr):
-            ycmplx = y.copy().astype(complex)
-            ycmplx[ii] = ycmplx[ii] + 1j*dh
-            dfdy = dYdt(t, ycmplx).imag/dh
-            jac[:,ii] = dfdy.squeeze()
-        return jac
-    
-    def jacFunMat(t,y):
-        if len(y.shape)==1:
-            y = y.reshape(mDim.nN,1)
-        jac = JacWater(t, y, sPar, mDim, bPar)
-        return jac    
-
-    # solve rate equatio
-    t_span = [tRange[0],tRange[-1]]
-    int_result = spi.solve_ivp(dYdt, t_span, iniSt.squeeze(),
-                               method='BDF', vectorized=True #, jac=jacFun, 
-                               ,t_eval=tRange,
-                               rtol=1e-6)
-
-    return int_result
 
 #%% FUNCTIONS HEAT
 
@@ -522,6 +482,8 @@ def JacHeat(t, H, T, sPar, mDim, bPar):
     jac = np.diag(a, -1) + np.diag(b, 0) + np.diag(c, 1)
     return jac
 
+
+
 #%% MAIN 
 
 
@@ -572,12 +534,12 @@ sPar = {'VGa': np.ones(np.shape(zN)) * 2,  # alpha[1/m]
         'VGm': np.ones(np.shape(zN)) * (1 - 1 / 3),  # m = 1-1/n[-]
         'theta_s': np.ones(np.shape(zN)) * 0.4,  # saturated water content
         'theta_r': np.ones(np.shape(zN)) * 0.01,  # residual water content
-        'Ks': np.ones(np.shape(zN)) * 0.05,  # [m/day]
-        'kapsat': np.ones(np.shape(zN)) * 0.05, #is kapsat hetzelfde as Ks?
+        'kapsat': np.ones(np.shape(zN)) * 1, 
         'zetaSol': np.ones(np.shape(zN)) * (2.235*10**6),
         'zetaWat': np.ones(np.shape(zN)) * (4.154*10**6), #at 35C
         'lambdaIN': np.ones(np.shape(zN)) * lambdaBulk * (24 * 3600),
-        'g': np.ones(np.shape(zN)) * 9.81}
+        'g': np.ones(np.shape(zN)) * 9.81,
+        'rho_w': np.ones(np.shape(zN)) * 1000}
 sPar = pd.Series(sPar)          
 
 # ## Definition of the Boundary Parameters
@@ -612,21 +574,32 @@ tOut =  np.logspace(-14, np.log10(365), num=365)
 nOut = np.shape(tOut)[0] 
 
 #### SOLVE ####
-# def intFun(t, y):
-#     nf = DivHeatFlux(t, y, sPar, mDim, bPar)
-#     return nf
 
-# def jacFun(t, y):
-#     jac = JacHeat(t, y, sPar, mDim, bPar)
-#     return (jac)
+def intFun(t, y):
+    H = y[:nN]
+    T = y[nN:]
+    
+    nf = DivWaterFlux(t, H, T, sPar, mDim, bPar)
+    nq = DivHeatFlux(t, H, T, sPar, mDim, bPar)
+    
+    return np.vstack(nf,nq)
 
+def jacFun (t,y) :
+    if len (y.shape) ==1:
+        y = y.reshape (mDim.nN, 1)
+    
+    nr , nc = y.shape
+    dh = np.sqrt(np.finfo(float).eps)
+    ycmplx = np.repeat(y,nr,axis=1).astype(complex)
+    c_ex = np.eye(nr)*1j*dh
+    ycmplx = ycmplx + c_ex
+    dfdy = dYdt(t,ycmplx).imag/dh
+    return sp.coo_matrix(dfdy)
 
 T0 = TIni.copy().squeeze()
 # use v_stack --> stack H0 and T0 --> solve for the whole vector once 
 # jacobian will speed up our simulation 
-DivW = DivWaterFlux(tOut, HIni, TIni, sPar, mDim, bPar)
-DivH = DivHeatFlux(tOut, HIni, TIni, sPar, mDim, bPar)
-HT   = np.vstack(DivWaterFlux(),DivHeatFlux())
+
 TODE = spi.solve_ivp(intFun, [tOut[0], tOut[-1]], T0, method='BDF',
                          t_eval=tOut, vectorized=True, rtol=1e-8, jac=jacFun)
 

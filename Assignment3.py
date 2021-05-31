@@ -3,7 +3,21 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import scipy.integrate as spi
 import scipy.sparse as sp
+import scipy as sc
 from scipy import interpolate
+from scipy import signal
+
+meteo = pd.read_csv(r'WieringermeerData_Meteo.csv', skiprows=0)
+datetime1 = meteo.iloc[:,0]
+rainfall = meteo.iloc[:,1] # rainfall rate over the day mm/day
+
+
+days = 30
+t = np.linspace(0, days, 1000)
+intensity = 300/365
+signal  = intensity*signal.square(t*np.pi)+intensity
+
+plt.plot(t, signal)
 
 # %% FUNCTIONS WATER FLUX
 
@@ -353,7 +367,7 @@ def HeatFlux(t, H, T, sPar, mDim, bPar):
     qh[0] = -lambdaIN[0] * (locT[0] - bPar.TBndBot) + sPar.zetaWat[0]*qW[0]*bPar.TBndBot*(qW[0]>=0)
 
     # Flux in all intermediate nodes
-    ii = np.arange(1, nIN - 1)
+    ii = np.arange(0, nIN - 1)
     qh[ii] = -lambdaIN[ii] * ((locT[ii] - locT[ii - 1]) / dzN[ii - 1]) + sPar.zetaWat*qW[ii]*locT[ii]
     # Top layer
     if bPar.topCond.lower() == 'Gravity':
@@ -368,6 +382,7 @@ def HeatFlux(t, H, T, sPar, mDim, bPar):
 
 
 def DivHeatFlux(t, H, T, sPar, mDim, bPar):
+    nr,nc = T.shape
     nN = mDim.nN
     dzIN = mDim.dzIN
     locT = T.copy()
@@ -379,16 +394,16 @@ def DivHeatFlux(t, H, T, sPar, mDim, bPar):
     divqH = np.zeros([nN, 1])
     # Calculate divergence of flux for all nodes
     ii = np.arange(0, nN-1)
-    divqH[ii, 0] = -(qH[ii + 1, 0] - qH[ii, 0]) \
-        / (dzIN[ii, 0] * zetaBN[ii])
+    divqH[ii, 0] = -(qH[ii + 1] - qH[ii]) \
+        / (dzIN[ii] * zetaBN[ii])
 
     # Top condition is special
     ii = nN-1
     if bPar.topCond.lower() == 'Gravity':
-        divqH[ii, 0] = 0
+        divqH[ii] = 0
     else:
-        divqH[ii, 0] = -(qH[ii + 1, 0] - qH[ii, 0]) \
-            / (dzIN[ii, 0] * zetaBN[ii])
+        divqH[ii] = -(qH[ii + 1] - qH[ii]) \
+            / (dzIN[ii] * zetaBN[ii])
 
     divqHRet = divqH  # .reshape(T.shape)
     return divqHRet
@@ -587,7 +602,7 @@ bPar = pd.Series(bPar)
 
 zRef = -0.75
 HIni = zRef - zN
-TIni = np.ones(np.shape(zN)) * (10.0 + 273.15)  # K
+TIni = np.ones(np.shape(zN)) * (20.0 + 273.15)  # K
 HIni = np.zeros(zN.shape)+0.1
 
 # HIni[0:25] =  np.linspace(0.25,0,25)
@@ -606,27 +621,30 @@ def intFun(t, y):
     nf = DivWaterFlux(t, H, T, sPar, mDim, bPar)
     nq = DivHeatFlux(t, H, T, sPar, mDim, bPar)
 
-    return np.vstack(nf, nq)
+    nqf = np.concatenate([nf,nq])
+    return nqf
 
 
 def jacFun(t, y):
     if len(y.shape) == 1:
-        y = y.reshape(mDim.nN, 1)
+        y = y.reshape(2*mDim.nN, 1)
 
     nr, nc = y.shape
     dh = np.sqrt(np.finfo(float).eps)
     ycmplx = np.repeat(y, nr, axis=1).astype(complex)
     c_ex = np.eye(nr)*1j*dh
     ycmplx = ycmplx + c_ex
-    dfdy = dYdt(t, ycmplx).imag/dh
+    dfdy = intFun(t, ycmplx).imag/dh
     return sp.coo_matrix(dfdy)
 
 
 T0 = TIni.copy().squeeze()
+hw0 = HIni.copy().squeeze()
+y0 = np.concatenate((T0,hw0))
 # use v_stack --> stack H0 and T0 --> solve for the whole vector once
 # jacobian will speed up our simulation
 
-TODE = spi.solve_ivp(intFun, [tOut[0], tOut[-1]], T0, method='BDF',
+TODE = spi.solve_ivp(intFun, [tOut[0], tOut[-1]], y0, method='BDF',
                      t_eval=tOut, vectorized=True, rtol=1e-8, jac=jacFun)
 
 

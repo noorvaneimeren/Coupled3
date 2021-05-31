@@ -296,7 +296,7 @@ def LambdaCalc(H, T, sPar):
     Fs1 = 0
     Fa1 = 0
 
-    for i in [1, 2]:
+    for i in range(len(g)):
         Fa1 += ((1+(lambdaA/lambdaWat-1)*g[i]))**-1
         Fs1 += ((1+(lambdaQuartz/lambdaWat-1)*g[i]))**-1
     Fa = Fa1*(1/3)
@@ -331,12 +331,13 @@ def BndTTop(t, bPar):
 
 
 def HeatFlux(t, H, T, sPar, mDim, bPar):
+    nr,nc = T.shape
     nIN = mDim.nIN
     nN = mDim.nN
     dzN = mDim.dzN
     lambdaIN = LambdaCalc(H, T, sPar)
     qW = WaterFlux(t, H, T, sPar, mDim, bPar)
-    qh = np.zeros((nIN, 1))
+    qh = np.zeros((nIN,nc), dtype = H.dtype)
 
     # Temperature at top boundary
     bndT = BndTTop(t, bPar)
@@ -349,13 +350,11 @@ def HeatFlux(t, H, T, sPar, mDim, bPar):
 
     # Calculate heat flux in domain
     # Bottom layer Robin condition
-    qh[0] = 0.0
-    qh[0] = -bPar.lambdaRobBot * (T[0] - bPar.TBndBot)
+    qh[0] = -lambdaIN[0] * (locT[0] - bPar.TBndBot) + sPar.zetaWat[0]*qW[0]*bPar.TBndBot*(qW[0]>=0)
 
     # Flux in all intermediate nodes
     ii = np.arange(1, nIN - 1)
-    qh[ii] = -lambdaIN[ii, 0] * ((locT[ii] - locT[ii - 1])
-                                 / dzN[ii - 1]) + sPar.zetaWat*qW[ii]*locT[ii]
+    qh[ii] = -lambdaIN[ii] * ((locT[ii] - locT[ii - 1]) / dzN[ii - 1]) + sPar.zetaWat*qW[ii]*locT[ii]
     # Top layer
     if bPar.topCond.lower() == 'Gravity':
         # Temperature is forced, so we ensure that divergence of flux in top
@@ -372,7 +371,7 @@ def DivHeatFlux(t, H, T, sPar, mDim, bPar):
     nN = mDim.nN
     dzIN = mDim.dzIN
     locT = T.copy()
-    zetaBN = np.diag(FillmMatHeat(t, H, locT, sPar, mDim, bPar))  # ????????
+    zetaBN = np.diag(FillmMatHeat(t, H, locT, sPar, mDim, bPar))
 
     # Calculate heat fluxes accross all internodes
     qH = HeatFlux(t, H, locT, sPar, mDim, bPar)

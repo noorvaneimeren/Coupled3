@@ -35,11 +35,12 @@ def Ksat(H, T, sPar, mDim):
     mu = [1.787, 1.519, 1.307, 1.002, 0.798, 0.653,
           0.547, 0.467, 0.404, 0.355, 0.315, 0.282]
 
-    vis = interpolate.interp1d(temp, mu, kind='linear')
+    vis = interpolate.UnivariateSpline(temp, mu)
 
     ii = np.arange(0, nN)
     # dit werkt niet voor T, wel voor een getal
-    Ksat[ii] = (sPar.kapsat*sPar.rho_w*sPar.g)/vis(300)
+    
+    Ksat[ii] = (T>=273.15) * (sPar.kapsat*sPar.rho_w*sPar.g)/vis(T) 
 
     return Ksat
 
@@ -385,16 +386,15 @@ def DivHeatFlux(t, H, T, sPar, mDim, bPar):
     nr,nc = T.shape
     nN = mDim.nN
     dzIN = mDim.dzIN
-    locT = T.copy()
-    zetaBN = np.diag(FillmMatHeat(t, H, locT, sPar, mDim, bPar))
+    zetaBN = np.diag(FillmMatHeat(t, H, T, sPar, mDim, bPar))
 
     # Calculate heat fluxes accross all internodes
-    qH = HeatFlux(t, H, locT, sPar, mDim, bPar)
+    qH = HeatFlux(t, H, T, sPar, mDim, bPar)
 
-    divqH = np.zeros([nN, 1])
+    divqH = np.zeros([nN, nc]).astype(T.dtype)
     # Calculate divergence of flux for all nodes
-    ii = np.arange(0, nN-1)
-    divqH[ii, 0] = -(qH[ii + 1] - qH[ii]) \
+    ii = np.arange(0, nN)
+    divqH[ii] = -(qH[ii + 1] - qH[ii]) \
         / (dzIN[ii] * zetaBN[ii])
 
     # Top condition is special
@@ -405,8 +405,7 @@ def DivHeatFlux(t, H, T, sPar, mDim, bPar):
         divqH[ii] = -(qH[ii + 1] - qH[ii]) \
             / (dzIN[ii] * zetaBN[ii])
 
-    divqHRet = divqH  # .reshape(T.shape)
-    return divqHRet
+    return divqH
 
 
 # ## functions to make the implicit solution easier

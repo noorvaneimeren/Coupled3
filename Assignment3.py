@@ -127,7 +127,7 @@ def BndQTop(t):
     # function to define fluctuating boundary conditions (water flux) at the top of the soil column
     bndQ = 0
     # bndQ=-0.0001
-    # bndQ = (-0.0001)*t*(t>25)*(t<225) #m/day
+    #bndQ = (-0.000)*(t>25)*(t<225) #m/day
     # zero flux for the first 25 days followed by 200 days flux 0.001
     return bndQ
     # check of het werkt als t een vector is
@@ -355,6 +355,7 @@ def HeatFlux(t, H, T, sPar, mDim, bPar):
 
     # Temperature at top boundary
     bndT = BndTTop(t, bPar)
+    
     # Implement Dirichlet Boundary  Python can mutate a list because these are
     # passed by reference and not copied to local scope...
     # locT = np.ones(np.shape(T)) * T
@@ -413,55 +414,6 @@ def DivHeatFlux(t, H, T, sPar, mDim, bPar):
 # Fill_kMat_Heat, Fill_mMat_Heat and Fill_yVec_Heat.
 
 
-def FillkMatHeat(t, H, T, sPar, mDim, bPar):
-    lambdaIN = LambdaCalc(H, T, sPar)
-    zetaBN = ZetaBCalc(H, T, sPar, mDim)
-
-    nN = mDim.nN
-    nIN = mDim.nIN
-    dzN = mDim.dzN
-    dzIN = mDim.dzIN
-
-    lambdaRobTop = bPar.lambdaRobTop
-    lambdaRobBot = bPar.lambdaRobBot
-
-    a = np.zeros([nN, 1])
-    b = np.zeros([nN, 1])
-    c = np.zeros([nN, 1])
-
-    # Fill KMat
-    # lower boundary
-    # Robin Boundary condition
-
-    a[0, 0] = 0
-    b[0, 0] = -(lambdaRobBot / dzIN[0, 0] + lambdaIN[1, 0] / (
-                dzIN[0, 0] * dzN[0, 0]))
-    c[0, 0] = lambdaIN[1, 0] / (dzIN[0, 0] * dzN[0, 0])
-
-    # middel nodes
-    ii = np.arange(1, nN - 1)
-    a[ii, 0] = lambdaIN[ii, 0] / (dzIN[ii, 0] * dzN[ii - 1, 0])
-
-    b[ii, 0] = -(lambdaIN[ii, 0] / (dzIN[ii, 0] * dzN[ii - 1, 0])
-                 + lambdaIN[ii + 1, 0] / (dzIN[ii, 0] * dzN[ii, 0]))
-
-    c[ii, 0] = lambdaIN[ii + 1, 0] / (dzIN[ii, 0] * dzN[ii, 0])
-
-    # Top boundary
-    if bPar.topCond.lower() == 'Gravity':
-        a[nN-1, 0] = 0
-        b[nN-1, 0] = -1
-        c[nN-1, 0] = 0
-    else:
-        # Robin condition
-        a[nN-1, 0] = lambdaIN[nIN-2, 0] / (dzIN[nIN-2, 0] * dzN[nN-2, 0])
-        b[nN-1, 0] = -(lambdaIN[nIN-2, 0] / (dzIN[nIN-2, 0] * dzN[nN-2, 0])
-                       + lambdaRobTop / dzIN[nIN-2, 0])
-        c[nN-1, 0] = 0
-
-    kMat = np.diag(a[1:nN, 0], -1) + np.diag(b[0:nN, 0], 0) + \
-        np.diag(c[0:nN - 1, 0], 1)
-    return kMat
 
 
 def FillmMatHeat(t, H, T, sPar, mDim, bPar):
@@ -472,23 +424,23 @@ def FillmMatHeat(t, H, T, sPar, mDim, bPar):
     return mMat
 
 
-def FillyVecHeat(t, T, sPar, mDim, bPar):
-    nN = mDim.nN
+# def FillyVecHeat(t, T, sPar, mDim, bPar):
+#     nN = mDim.nN
 
-    yVec = np.zeros([nN, 1])
+#     yVec = np.zeros([nN, 1])
 
-    # Bottom Boundary
-    yVec[0, 0] = bPar.lambdaRobBot / mDim.dzIN[0, 0] * bPar.TBndBot
+#     # Bottom Boundary
+#     yVec[0, 0] = bPar.lambdaRobBot / mDim.dzIN[0, 0] * bPar.TBndBot
 
-    # Top Boundary (Known temperature)
-    if bPar.topCond.lower() == 'Gravity':
-        yVec[nN-1, 0] = BndTTop(t, bPar)
-    else:
-        # Robin condition
-        yVec[nN-1, 0] = bPar.lambdaRobTop / \
-            mDim.dzIN[mDim.nIN-2, 0] * BndTTop(t, bPar)
+#     # Top Boundary (Known temperature)
+#     if bPar.topCond.lower() == 'Gravity':
+#         yVec[nN-1, 0] = BndTTop(t, bPar)
+#     else:
+#         # Robin condition
+#         yVec[nN-1, 0] = bPar.lambdaRobTop / \
+#             mDim.dzIN[mDim.nIN-2, 0] * BndTTop(t, bPar)
 
-    return yVec
+#     # return yVec
 
 
 # def JacHeat(t, H, T, sPar, mDim, bPar):
@@ -563,19 +515,72 @@ lambdaOther = 2.0  # [W/(mK)] thermal conductivity of other minerals
 lambdaSolids = lambdaQuartz ** q * lambdaOther ** (1 - q)
 lambdaBulk = lambdaWat ** n * lambdaSolids ** (1 - n)
 
-# collect soil parameters in a namedtuple: soilPar
-'zetaBN', 'lambdaIN'
-sPar = {'VGa': np.ones(np.shape(zN)) * 2,  # alpha[1/m]
-        'VGn': np.ones(np.shape(zN)) * 3,  # n[-]
-        'VGm': np.ones(np.shape(zN)) * (1 - 1 / 3),  # m = 1-1/n[-]
-        'theta_s': np.ones(np.shape(zN)) * 0.4,  # saturated water content
-        'theta_r': np.ones(np.shape(zN)) * 0.01,  # residual water content
-        'kapsat': np.ones(np.shape(zN)) * 1,
-        'zetaSol': np.ones(np.shape(zN)) * (2.235*10**6),
-        'zetaWat': np.ones(np.shape(zN)) * (4.154*10**6),  # at 35C
-        'lambdaIN': np.ones(np.shape(zN)) * lambdaBulk * (24 * 3600),
+#define interface height of 2 soils
+
+sheight = 0.95
+
+# clay = zN[21:101]
+
+#SAND
+sVGa = 2
+sVGn = 3
+sVGm = 1- 1/3
+sTheta_s = 0.4
+sTheta_r =  0.01
+sKapsat = 1
+sZetasol = 2.235*10**6
+sZetaWat =  4.154 *10**6
+
+#CLAY
+cVGa = 2
+cVGn = 1.23
+cVGm = 1 - 1/1.23
+cTheta_s = 0.49
+cTheta_r = 0.01
+cKapsat =1
+cZetasol = 3.235*10**6
+cZetaWat = 5.235*10**6
+
+VGa = np.ones(np.shape(zN))
+VGn = np.ones(np.shape(zN))
+VGm = np.ones(np.shape(zN))
+theta_s = np.ones(np.shape(zN))
+theta_r = np.ones(np.shape(zN))
+kapsat = np.ones(np.shape(zN))
+zetaSol = np.ones(np.shape(zN))
+zetaWat = np.ones(np.shape(zN))
+for i in range (len(zN)):
+    if zN[i]<-sheight:
+        VGa[i] = sVGa
+        VGn[i] = sVGn
+        VGm[i] = sVGm
+        theta_s[i] = sTheta_s
+        theta_r[i] = sTheta_r
+        kapsat[i] = sKapsat
+        zetaSol[i] = sZetasol
+        zetaWat[i] = sZetaWat
+    else:
+        VGa[i] = cVGa
+        VGn[i] = cVGn
+        VGm[i] = cVGm
+        theta_s[i] = cTheta_s
+        theta_r[i] = cTheta_r
+        kapsat[i] = cKapsat
+        zetaSol[i] = cZetasol
+        zetaWat[i] = cZetaWat
+
+sPar = {'VGa': VGa,
+        'VGn': VGn,
+        'VGm': VGm,  # m = 1-1/n[-]
+        'theta_s': theta_s,  # saturated water content
+        'theta_r': theta_r,  # residual water content
+        'kapsat': kapsat,
+        'zetaSol': zetaSol,
+        'zetaWat': zetaWat,  # at 35C
+        
         'g': np.ones(np.shape(zN)) * 9.81,
         'rho_w': np.ones(np.shape(zN)) * 1000}
+
 sPar = pd.Series(sPar)
 
 # ## Definition of the Boundary Parameters

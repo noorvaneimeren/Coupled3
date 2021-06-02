@@ -17,7 +17,6 @@ t = np.linspace(0, days, 1000)
 intensity = 300/365
 signal  = intensity*signal.square(t*np.pi)+intensity
 
-plt.plot(t, signal)
 
 # %% FUNCTIONS WATER FLUX
 
@@ -393,7 +392,7 @@ def DivHeatFlux(t, H, T, sPar, mDim, bPar):
 
     divqH = np.zeros([nN, nc]).astype(T.dtype)
     # Calculate divergence of flux for all nodes
-    ii = np.arange(0, nN)
+    ii = np.arange(0, nN-1)
     divqH[ii] = -(qH[ii + 1] - qH[ii]) \
         / (dzIN[ii] * zetaBN[ii])
 
@@ -492,33 +491,33 @@ def FillyVecHeat(t, T, sPar, mDim, bPar):
     return yVec
 
 
-def JacHeat(t, H, T, sPar, mDim, bPar):
-    # Function calculates the jacobian matrix for the Richards equation
-    nN = mDim.nN
-    locT = T.copy().reshape(nN, 1)
-    kMat = FillkMatHeat(t, H, locT, sPar, mDim, bPar)
-    massMD = np.diag(FillmMatHeat(t, H, locT, sPar, mDim, bPar)).copy()
+# def JacHeat(t, H, T, sPar, mDim, bPar):
+#     # Function calculates the jacobian matrix for the Richards equation
+#     nN = mDim.nN
+#     locT = T.copy().reshape(nN, 1)
+#     kMat = FillkMatHeat(t, H, locT, sPar, mDim, bPar)
+#     massMD = np.diag(FillmMatHeat(t, H, locT, sPar, mDim, bPar)).copy()
 
-    a = np.diag(kMat, -1).copy()
-    b = np.diag(kMat, 0).copy()
-    c = np.diag(kMat, 1).copy()
+#     a = np.diag(kMat, -1).copy()
+#     b = np.diag(kMat, 0).copy()
+#     c = np.diag(kMat, 1).copy()
 
-    if bPar.topCond.lower() == 'Gravity':
-        # massMD(nN-1,1) = 0 so we cannot divide by massMD but we know that the
-        # Jacobian should be zero so we set b[nN-1,0] to zero instead and
-        # massMD[nN-1,0] to 1.
-        b[nN-1] = 0
-        massMD[nN-1] = 1
+#     if bPar.topCond.lower() == 'Gravity':
+#         # massMD(nN-1,1) = 0 so we cannot divide by massMD but we know that the
+#         # Jacobian should be zero so we set b[nN-1,0] to zero instead and
+#         # massMD[nN-1,0] to 1.
+#         b[nN-1] = 0
+#         massMD[nN-1] = 1
 
-    jac = np.zeros((3, nN))
-    a = a / massMD[1:nN]
-    b = b / massMD[0:nN]
-    c = c / massMD[0:nN - 1]
-    # jac[0,0:nN-1] = a[:]
-    # jac[1,0:nN] = b[:]
-    # jac[2,0:nN-1] = c[:]
-    jac = np.diag(a, -1) + np.diag(b, 0) + np.diag(c, 1)
-    return jac
+#     jac = np.zeros((3, nN))
+#     a = a / massMD[1:nN]
+#     b = b / massMD[0:nN]
+#     c = c / massMD[0:nN - 1]
+#     # jac[0,0:nN-1] = a[:]
+#     # jac[1,0:nN] = b[:]
+#     # jac[2,0:nN-1] = c[:]
+#     jac = np.diag(a, -1) + np.diag(b, 0) + np.diag(c, 1)
+#     return jac
 
 
 # %% MAIN
@@ -630,6 +629,7 @@ def jacFun(t, y):
 
     nr, nc = y.shape
     dh = np.sqrt(np.finfo(float).eps)
+    
     ycmplx = np.repeat(y, nr, axis=1).astype(complex)
     c_ex = np.eye(nr)*1j*dh
     ycmplx = ycmplx + c_ex

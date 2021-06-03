@@ -183,111 +183,6 @@ def DivWaterFlux(t, H, T, sPar, mDim, bPar):  # = d(theta)/dt
 
     return divqW
 
-# functions to make the implicit solution easier
-# Fill_kMat_water, Fill_mMat_water and Fill_yVec_water
-
-
-#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-# def FillkMatWater(t, H, T, sPar, mDim, bPar):
-
-#     nN = mDim.nN
-#     dzN = mDim.dzN
-#     dzIN = mDim.dzIN
-
-#     K_rob = bPar.res_rob # to define robin conditions??
-#     KIN = Kvec(H, T, sPar, mDim)
-
-#     a = np.zeros(nN, dtype=H.dtype) #dimensions 11 x 1
-#     b = np.zeros(nN, dtype=H.dtype)
-#     c = np.zeros(nN, dtype=H.dtype)
-
-#     # Fill KMat
-#     # lower boundary
-#     if bPar.BotCond == 'Gravity':
-#         a[0] = 0
-#         b[0] = -KIN[1,0] / (dzIN[0,0] * dzN[0,0])
-#         c[0] = KIN[1,0] / (dzIN[0,0] * dzN[0,0])
-#     else:
-#         a[0] = 0
-#         b[0] = (-K_rob/ dzIN[0,0]) - (KIN[1,0] / (dzIN[0,0] * dzN[0,0]))
-#         c[0] = KIN[1, 0] / (dzIN[0, 0] * dzN[0, 0])
-
-#     # middle nodes
-#     ii = np.arange(1, nN - 1)
-#     a[ii] = KIN[ii, 0] / (dzIN[ii, 0] * dzN[ii - 1, 0])
-
-#     b[ii] = -(KIN[ii, 0] / (dzIN[ii, 0] * dzN[ii - 1, 0])
-#                  + KIN[ii + 1, 0] / (dzIN[ii, 0] * dzN[ii, 0]))
-
-#     c[ii] = KIN[ii + 1, 0] / (dzIN[ii, 0] * dzN[ii, 0])
-
-
-#     # Upper boundary
-#     ii = nN - 1
-#     a[ii] = KIN[ii, 0] / (dzIN[ii, 0] * dzN[ii - 1, 0])
-#     b[ii] = -KIN[ii, 0] / (dzIN[ii, 0] * dzN[ii - 1, 0])
-#     c[ii] = 0
-
-#     kMat = np.diag(a[1:nN, 0], -1) + np.diag(b, 0) + np.diag(c[0:nN - 1], 1)
-#     return kMat
-
-
-# def FillmMatWater(t, H, sPar, mDim, bPar):
-#     nN = mDim.nN
-#     dzIN = mDim.dzIN
-#     KIN = Kvec(H, sPar, mDim)
-#     ii = np.arange(1, nN - 1)
-#     d = np.zeros([nN, 1])
-#     d[ii, 0] = -(KIN[ii, 0] / dzIN[ii, 0]
-#                  + KIN[ii + 1, 0] / dzIN[ii, 0])
-#     return d
-
-
-# def FillyVecWater(t, H, sPar, mDim, bPar):
-#     nN = mDim.nN
-#     dzIN = mDim.dzIN
-#     yVec = np.zeros([nN,1])
-
-#    # Top Boundary
-#     yVec[nN] = BndQTop(t)
-#     KIN = Kvec(H, sPar, mDim)
-#     qBnd = BndQTop(t)
-
-#     # Lower Boundary
-#     if bPar.BotCond == 'Gravity':
-#         #case for which there is only gravity flow
-#         yVec[0,0] = -KIN[0,0]/ dzIN[0, 0] + KIN[1, 0] / dzIN[0, 0] #infiltration at bottom, head is zero
-
-#     else:
-#         # mixed condition
-#         # bPar.BotCond == 'Robbin'
-#         yVec[0,0] = bPar.res_rob / dzIN[0, 0] * bPar.H_rob  + KIN[1, 0] / dzIN[0, 0]
-
-
-#         # middel nodes
-#     ii = np.arange(1, nN - 1)
-#     yVec[ii, 0] = -KIN[ii, 0] / dzIN[ii, 0] + KIN[ii + 1, 0] / dzIN[ii, 0]
-#     # Upper boundary
-#     ii = nN - 1
-#     yVec[ii, 0] = -KIN[ii, 0] / dzIN[ii, 0] - qBnd / dzIN[ii, 0]
-#     return yVec
-
-
-# def JacWater(t, H, T, sPar, mDim, bPar):
-#     # Function calculates the jacobian matrix for the Richards equation
-#     nN = mDim.nN
-
-#     kMat = FillkMatWater(t, H, T, sPar, mDim, bPar)
-#     M_Mat = CeffMat(H, sPar, mDim)
-
-#     # massMD = np.diag(FillmMatWater(t, H, sPar, mDim, bPar)).copy()
-#     jac = np.zeros((3, nN)) #3x11
-#     a = np.diag(kMat, -1) / M_Mat[1:nN,0]
-#     b = np.diag(kMat, 0) / M_Mat[0:nN,0]
-#     c = np.diag(kMat, 1) / M_Mat[0:nN-1,0]
-
-#     jac = np.diag(a, -1) + np.diag(b, 0) + np.diag(c, 1)
-#     return jac
 
 
 # %% FUNCTIONS HEAT
@@ -424,52 +319,7 @@ def FillmMatHeat(t, H, T, sPar, mDim, bPar):
     return mMat
 
 
-# def FillyVecHeat(t, T, sPar, mDim, bPar):
-#     nN = mDim.nN
 
-#     yVec = np.zeros([nN, 1])
-
-#     # Bottom Boundary
-#     yVec[0, 0] = bPar.lambdaRobBot / mDim.dzIN[0, 0] * bPar.TBndBot
-
-#     # Top Boundary (Known temperature)
-#     if bPar.topCond.lower() == 'Gravity':
-#         yVec[nN-1, 0] = BndTTop(t, bPar)
-#     else:
-#         # Robin condition
-#         yVec[nN-1, 0] = bPar.lambdaRobTop / \
-#             mDim.dzIN[mDim.nIN-2, 0] * BndTTop(t, bPar)
-
-#     # return yVec
-
-
-# def JacHeat(t, H, T, sPar, mDim, bPar):
-#     # Function calculates the jacobian matrix for the Richards equation
-#     nN = mDim.nN
-#     locT = T.copy().reshape(nN, 1)
-#     kMat = FillkMatHeat(t, H, locT, sPar, mDim, bPar)
-#     massMD = np.diag(FillmMatHeat(t, H, locT, sPar, mDim, bPar)).copy()
-
-#     a = np.diag(kMat, -1).copy()
-#     b = np.diag(kMat, 0).copy()
-#     c = np.diag(kMat, 1).copy()
-
-#     if bPar.topCond.lower() == 'Gravity':
-#         # massMD(nN-1,1) = 0 so we cannot divide by massMD but we know that the
-#         # Jacobian should be zero so we set b[nN-1,0] to zero instead and
-#         # massMD[nN-1,0] to 1.
-#         b[nN-1] = 0
-#         massMD[nN-1] = 1
-
-#     jac = np.zeros((3, nN))
-#     a = a / massMD[1:nN]
-#     b = b / massMD[0:nN]
-#     c = c / massMD[0:nN - 1]
-#     # jac[0,0:nN-1] = a[:]
-#     # jac[1,0:nN] = b[:]
-#     # jac[2,0:nN-1] = c[:]
-#     jac = np.diag(a, -1) + np.diag(b, 0) + np.diag(c, 1)
-#     return jac
 
 
 # %% MAIN
@@ -519,7 +369,7 @@ lambdaBulk = lambdaWat ** n * lambdaSolids ** (1 - n)
 
 sheight = 0.95
 
-# clay = zN[21:101]
+
 
 #SAND
 sVGa = 2
@@ -608,7 +458,7 @@ HIni = zRef - zN
 TIni = np.ones(np.shape(zN)) * (20.0 + 273.15)  # K
 HIni = np.zeros(zN.shape)+0.1
 
-# HIni[0:25] =  np.linspace(0.25,0,25)
+
 
 # Time Discretization
 tOut = np.logspace(-14, np.log10(365), num=365)
@@ -628,7 +478,8 @@ def intFun(t, y):
     return nqf
 
 
-def jacFun(t, y):
+def jacFun(t, y): 
+ 
     if len(y.shape) == 1:
         y = y.reshape(2*mDim.nN, 1)
 
@@ -640,6 +491,8 @@ def jacFun(t, y):
     ycmplx = ycmplx + c_ex
     dfdy = intFun(t, ycmplx).imag/dh
     return sp.coo_matrix(dfdy)
+    
+
 
 
 T0 = TIni.copy().squeeze()

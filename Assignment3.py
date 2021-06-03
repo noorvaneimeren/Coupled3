@@ -141,7 +141,7 @@ def WaterFlux(t, H, T, sPar, mDim, bPar):
 
     KIN = Kvec(H, T, sPar, mDim)
 
-    qw = np.zeros([nIN, nc], dtype=H.dtype)
+    qw = np.zeros((nIN, nc)).astype(H.dtype)
 
     # flux at top boundary
     bndQtop = BndQTop(t)
@@ -174,7 +174,7 @@ def DivWaterFlux(t, H, T, sPar, mDim, bPar):  # = d(theta)/dt
 
     # Calculate water fluxes across all internodes
     qW = WaterFlux(t, H, T, sPar, mDim, bPar)
-    divqW = np.zeros([nN, nc]).astype(H.dtype)
+    divqW = np.zeros((nN, nc)).astype(H.dtype)
 
     # Calculate divergence of flux for all nodes
     ii = np.arange(0, nN)
@@ -351,7 +351,7 @@ def HeatFlux(t, H, T, sPar, mDim, bPar):
     dzN = mDim.dzN
     lambdaIN = LambdaCalc(H, T, sPar)
     qW = WaterFlux(t, H, T, sPar, mDim, bPar)
-    qh = np.zeros((nIN,nc), dtype = H.dtype)
+    qh = np.zeros((nIN,nc)).astype(H.dtype)
 
     # Temperature at top boundary
     bndT = BndTTop(t, bPar)
@@ -386,12 +386,12 @@ def DivHeatFlux(t, H, T, sPar, mDim, bPar):
     nr,nc = T.shape
     nN = mDim.nN
     dzIN = mDim.dzIN
-    zetaBN = np.diag(FillmMatHeat(t, H, T, sPar, mDim, bPar))
+    zetaBN = np.diag(FillmMatHeat(t, H, T, sPar, mDim, bPar)).reshape(nr, nc)
 
     # Calculate heat fluxes accross all internodes
     qH = HeatFlux(t, H, T, sPar, mDim, bPar)
 
-    divqH = np.zeros([nN, nc]).astype(T.dtype)
+    divqH = np.zeros([nN, nc]).astype(H.dtype)
     # Calculate divergence of flux for all nodes
     ii = np.arange(0, nN-1)
     divqH[ii] = -(qH[ii + 1] - qH[ii]) \

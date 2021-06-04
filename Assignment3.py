@@ -1,10 +1,9 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import scipy.integrate as spi
+import scipy.integrate as spi 
+import scipy.interpolate as spt
 import scipy.sparse as sp
-import scipy as sc
-from scipy import interpolate
 from scipy import signal
 
 meteo = pd.read_csv(r'WieringermeerData_Meteo.csv', skiprows=0)
@@ -20,28 +19,47 @@ signal  = intensity*signal.square(t*np.pi)+intensity
 
 # %% FUNCTIONS WATER FLUX
 
-
-def Ksat(H, T, sPar, mDim):
-    nN = mDim.nN
-
-    nr, nc = H.shape
-
-    # set permeability to zero at every node
-    Ksat = np.zeros([nN, nc], dtype=H.dtype)
-
+def TempVis(T,sPar):
+    
     temp = [273.15, 278.15, 283.15, 293.15, 303.15, 313.15,
             323.15, 333.15, 343.15, 353.15, 363.15, 373.15]
     mu = [1.787, 1.519, 1.307, 1.002, 0.798, 0.653,
           0.547, 0.467, 0.404, 0.355, 0.315, 0.282]
-
-    vis = interpolate.UnivariateSpline(temp, mu)
-
-    ii = np.arange(0, nN)
-    # dit werkt niet voor T, wel voor een getal
     
-    Ksat[ii] = (T>=273.15) * (sPar.kapsat*sPar.rho_w*sPar.g)/vis(T) 
+    p = spt.interp1d(temp, mu, fill_value='extrapolate')
+    
+    VisInt = p(T)*rho_w * sPar.kapsat
+    
+    return VisInt
 
+
+def Ksat(H, T, sPar, mDim):
+    Ksat = sPar.kapsat* TempVis(298.15,sPar)/TempVis(T, sPar)
     return Ksat
+
+# def Ksat(H, T, sPar, mDim):
+#     nN = mDim.nN
+#     nr, nc = H.shape
+#     vis = TempVis(T,sPar)
+
+#     # set permeability to zero at every node
+#     Ksat = np.zeros((nN, nc))#, dtype=H.dtype)
+
+#     # temp = [273.15, 278.15, 283.15, 293.15, 303.15, 313.15,
+#     #         323.15, 333.15, 343.15, 353.15, 363.15, 373.15]
+#     # mu = [1.787, 1.519, 1.307, 1.002, 0.798, 0.653,
+#     #       0.547, 0.467, 0.404, 0.355, 0.315, 0.282]
+
+#     # vis = interpolate.UnivariateSpline(temp, mu)
+
+#     ii = np.arange(0, nN)
+    
+#     Ksat[ii] = (T>=273.15) * (sPar.kapsat*sPar.rho_w*sPar.g)/vis 
+
+#     return Ksat
+
+
+
 
 
 def Seff(H, sPar):
@@ -103,7 +121,7 @@ def CeffMat(H, sPar, mDim):
 
 def Kvec(H, T, sPar, mDim):
     # function to fill in effective permeability at nodes
-    nIN = mDim.nIN  # 11 (depth is 1 meter discretised +1)
+    nIN = mDim.nIN  # 101 (depth is 1 meter discretised +1)
     # zIN = mDim.zIN # nodes [-1 0.9 0.8 0.7 ... 0]^T
     ksat = Ksat(H, T, sPar, mDim)
     nr, nc = H.shape
@@ -165,23 +183,23 @@ def WaterFlux(t, H, T, sPar, mDim, bPar):
     return qw
 
 
-def DivWaterFlux(t, H, T, sPar, mDim, bPar):  # = d(theta)/dt
-    nN = mDim.nN
-    dzIN = mDim.dzIN
-    nr, nc = H.shape
+# def DivWaterFlux(t, H, T, sPar, mDim, bPar):  # = d(theta)/dt
+#     nN = mDim.nN
+#     dzIN = mDim.dzIN
+#     nr, nc = H.shape
 
-    mass = CeffMat(H, sPar, mDim)
+#     mass = CeffMat(H, sPar, mDim)
 
-    # Calculate water fluxes across all internodes
-    qW = WaterFlux(t, H, T, sPar, mDim, bPar)
-    divqW = np.zeros((nN, nc)).astype(H.dtype)
+#     # Calculate water fluxes across all internodes
+#     qW = WaterFlux(t, H, T, sPar, mDim, bPar)
+#     divqW = np.zeros((nN, nc)).astype(H.dtype)
 
-    # Calculate divergence of flux for all nodes
-    ii = np.arange(0, nN)
-    divqW[ii] = -(qW[ii + 1] - qW[ii]) \
-        / (dzIN[ii] * mass[ii])
+#     # Calculate divergence of flux for all nodes
+#     ii = np.arange(0, nN)
+#     divqW[ii] = -(qW[ii + 1] - qW[ii]) \
+#         / (dzIN[ii] * mass[ii])
 
-    return divqW
+#     return divqW
 
 
 
@@ -228,7 +246,7 @@ def ZetaBCalc(H, T, sPar, mDim):
     Wat = wcont(H, sPar)
     Sat = Wat/n
     zetaB = np.ones(np.shape(zN)) * ((1 - n) *
-                                     sPar.zetaSol + n * sPar.zetaWat * Sat)
+                                      sPar.zetaSol + n * sPar.zetaWat * Sat)
 
     return zetaB
 
@@ -270,37 +288,66 @@ def HeatFlux(t, H, T, sPar, mDim, bPar):
         # Temperature is forced, so we ensure that divergence of flux in top
         # layeris zero...
         qh[nIN-1] = q[nIN - 2]
-    else:
-        # Robin condition
-        qh[nIN-1] = -bPar.lambdaRobTop * (bndT - T[nN-1])
+    # else:
+    #     # Robin condition
+    #     qh[nIN-1] = -bPar.lambdaRobTop * (bndT - T[nN-1])
 
     return qh
 
 
-def DivHeatFlux(t, H, T, sPar, mDim, bPar):
-    nr,nc = T.shape
+# def DivHeatFlux(t, H, T, sPar, mDim, bPar):
+#     nr,nc = T.shape
+#     nN = mDim.nN
+#     # dzIN = mDim.dzIN
+#     zetaBN = sPar.zetaBN #np.diag(FillmMatHeat(t, H, T, sPar, mDim, bPar))
+
+#     # Calculate heat fluxes accross all internodes
+#     qH = HeatFlux(t, H, T, sPar, mDim, bPar)
+    
+
+#     divqH = np.zeros([nN, nc]).astype(H.dtype)
+#     # Calculate divergence of flux for all nodes
+#     ii = np.arange(0, nN-1)
+#     divqH[ii] = -(qH[ii + 1] - qH[ii]) \
+#         / (dzIN[ii] * zetaBN[ii])
+
+#     # Top condition is special
+#     ii = nN-1
+#     if bPar.topCond.lower() == 'Gravity':
+#         divqH[ii] = 0
+#     else:
+#         divqH[ii] = -(qH[ii + 1] - qH[ii]) \
+#             / (dzIN[ii] * zetaBN[ii])
+
+#     return divqH
+
+def Divtotal (t, H, T, sPar, mDim, bPar):
+    nr, nc = H.shape
     nN = mDim.nN
-    dzIN = mDim.dzIN
-    zetaBN = np.diag(FillmMatHeat(t, H, T, sPar, mDim, bPar)).reshape(nr, nc)
-
-    # Calculate heat fluxes accross all internodes
+    zetaBN = np.diag(np.diag(FillmMatHeat(t, H, T, sPar, mDim, bPar))) # weird solution, reshape did not work
+    
+    zetaWat = sPar.zetaWat
+    zetaAir = sPar.zetaAir
+    rHSH = np.zeros([nN,nc], dtype=H.dtype)
+    rHSW = np.zeros([nN,nc], dtype=H.dtype)
+    Divtot = np.zeros([2*nN,nc],dtype=H.dtype)
+    
+    divqW =  np.zeros([nN,nc], dtype=H.dtype)
+    divqH =  np.zeros([nN,nc], dtype=H.dtype)
+    
+    mWat = CeffMat(H, sPar,mDim)
+    qW = WaterFlux(t, H, T, sPar, mDim, bPar)
+    
+    ii = np.arange(0, nN)
+    divqW[ii] = -(qW[ii+1]-qW[ii]) / (dzIN[ii]) 
+    rHSW = divqW / mWat
+    
     qH = HeatFlux(t, H, T, sPar, mDim, bPar)
-
-    divqH = np.zeros([nN, nc]).astype(H.dtype)
-    # Calculate divergence of flux for all nodes
-    ii = np.arange(0, nN-1)
-    divqH[ii] = -(qH[ii + 1] - qH[ii]) \
-        / (dzIN[ii] * zetaBN[ii])
-
-    # Top condition is special
-    ii = nN-1
-    if bPar.topCond.lower() == 'Gravity':
-        divqH[ii] = 0
-    else:
-        divqH[ii] = -(qH[ii + 1] - qH[ii]) \
-            / (dzIN[ii] * zetaBN[ii])
-
-    return divqH
+    divqH[ii] = -(qH[ii+1]-qH[ii]) / (dzIN[ii])
+    # rHSH = (divqH - (T*(zetaWat-zetaAir)*divqW)) / (zetaBN)
+    
+    Divtot = np.concatenate((rHSW, rHSH), axis=0)
+    return Divtot
 
 
 # ## functions to make the implicit solution easier
@@ -399,6 +446,7 @@ theta_r = np.ones(np.shape(zN))
 kapsat = np.ones(np.shape(zN))
 zetaSol = np.ones(np.shape(zN))
 zetaWat = np.ones(np.shape(zN))
+
 for i in range (len(zN)):
     if zN[i]<-sheight:
         VGa[i] = sVGa
@@ -427,11 +475,16 @@ sPar = {'VGa': VGa,
         'kapsat': kapsat,
         'zetaSol': zetaSol,
         'zetaWat': zetaWat,  # at 35C
-        
+        'Ksat': np.ones(np.shape(zN)) * 0.05,
+        'vis' : np.ones(np.shape(zN)) * 0.8,
         'g': np.ones(np.shape(zN)) * 9.81,
-        'rho_w': np.ones(np.shape(zN)) * 1000}
+        'zetaBN': np.ones(np.shape(zN)) * ((1 - n) * zetaSol + n * zetaWat),
+        'lambdaIN': np.ones(np.shape(zIN)) * lambdaBulk * (24 * 3600),
+        'rho_w': np.ones(np.shape(zN)) * 1000,
+        'zetaAir': np.ones(np.shape(zN)) * 0.024}
 
 sPar = pd.Series(sPar)
+
 
 # ## Definition of the Boundary Parameters
 # boundary parameters
@@ -453,9 +506,9 @@ bPar = pd.Series(bPar)
 # ## Initial Conditions
 # Initial Conditions
 
-zRef = -0.75
+zRef = -0.5
 HIni = zRef - zN
-TIni = np.ones(np.shape(zN)) * (20.0 + 273.15)  # K
+TIni = np.ones(np.shape(zN)) * (10.0 + 273.15)  # K
 HIni = np.zeros(zN.shape)+0.1
 
 
@@ -471,12 +524,11 @@ def intFun(t, y):
     H = y[:nN]
     T = y[nN:]
 
-    nf = DivWaterFlux(t, H, T, sPar, mDim, bPar)
-    nq = DivHeatFlux(t, H, T, sPar, mDim, bPar)
+    # nf = DivWaterFlux(t, H, T, sPar, mDim, bPar)
+    # nq = DivHeatFlux(t, H, T, sPar, mDim, bPar)
 
-    nqf = np.concatenate([nf,nq])
-    return nqf
-
+    # nqf = np.concatenate([nf,nq])
+    return Divtotal(t, H, T, sPar, mDim, bPar)
 
 def jacFun(t, y): 
  
@@ -492,20 +544,19 @@ def jacFun(t, y):
     dfdy = intFun(t, ycmplx).imag/dh
     return sp.coo_matrix(dfdy)
     
-
-
-
 T0 = TIni.copy().squeeze()
 hw0 = HIni.copy().squeeze()
-y0 = np.concatenate((T0,hw0))
+y0 = np.concatenate((hw0,T0))
 # use v_stack --> stack H0 and T0 --> solve for the whole vector once
 # jacobian will speed up our simulation
 
 TODE = spi.solve_ivp(intFun, [tOut[0], tOut[-1]], y0, method='BDF',
-                     t_eval=tOut, vectorized=True, rtol=1e-8, jac=jacFun)
+                     t_eval=tOut, vectorized=True, rtol=1e-5, jac=jacFun)
 
+print('solved?')
 
-plt.close('all')
+#%%
+
 
 fig1, ax1 = plt.subplots(figsize=(7, 4))
 for ii in np.arange(0, nN, 20):
@@ -518,7 +569,7 @@ ax1.grid(b=True)
 
 fig2, ax2 = plt.subplots(figsize=(4, 7))
 for ii in np.arange(0, nOut, 20):
-    ax2.plot(TODE.y[:, ii], zN[:, 0], '-')
+    ax2.plot(TODE.y[:nN, ii], zN[:nN, 0], '-')
 
 
 ax2.set_title('Pressure head vs. depth over time')
@@ -528,17 +579,37 @@ ax2.grid(b=True)
 
 thODE = np.zeros(np.shape(TODE.y))
 for ii in np.arange(0, TODE.t.size, 1):
-    hwTmp = TODE.y[:, ii].reshape(zN.shape)
-    thODE[:, ii] = wcont(hwTmp, sPar).reshape(1, nN)
+    hwTmp = TODE.y[:nN, ii].reshape(zN.shape)
+    thODE[:nN, ii] = wcont(hwTmp, sPar).reshape(1, nN)
 
 fig3, ax3 = plt.subplots(figsize=(7, 7))
 for ii in np.arange(0, TODE.t.size, 1):
-    ax3.plot(thODE[:, ii], zN[:, 0], '-')
+    ax3.plot(thODE[:nN, ii], zN[:, 0], '-')
 
-# scipy.integrate.squad(thODE[:, 0], 0, -1)
 ax3.grid(b=True)
 ax3.set_title('Water content vs depth over time')
 ax3.set_xlabel('water content [-]')
 ax3.set_ylabel('depth [m]')
+ax3.grid(b=True)
+
+
+fig4, ax4 = plt.subplots(figsize=(7, 4))
+for ii in np.arange(nN,2*nN, 20):
+    ax4.plot(tOut, TODE.y[ii, :], '-')
+ax4.set_title('Temperature (ODE)')
+ax4.grid(b=True)
+
+fig5, ax5 = plt.subplots(figsize=(4, 7))
+for ii in np.arange(0, nOut, 20):
+    ax5.plot(TODE.y[nN:, ii], zN, '-')
+
+ax5.set_title('Temperature vs. depth (ODE)')
+ax5.grid(b=True)
 
 plt.show()
+
+#%%
+
+print(TODE.y)
+
+plt.plot(TODE.y[nN:,:])
